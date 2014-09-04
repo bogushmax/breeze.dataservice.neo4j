@@ -1,0 +1,26 @@
+{
+  "name": "breeze.neo4j.dataservice",
+  "version": "0.0.1",
+  "description": "Breeze dataservice adapter to neo4j database",
+  "main": "src/breeze.dataservice.neo4j.js",
+  "scripts": {
+    "test": "grunt jasmine:dev"
+  },
+  "keywords": [
+    "Breeze",
+    "Neo4j",
+    "Cypher",
+    "Breeze dataservice"
+  ],
+  "author": "Bogush Max",
+  "repository": {
+    "type": "https",
+    "url": "https://github.com/bogushmax/breeze.dataservice.neo4j"
+  },
+  "devDependencies": {
+    "grunt": "~0.4.1",
+    "grunt-contrib-jasmine": "~0.7.0",
+    "grunt-template-jasmine-requirejs": "^0.2.0",
+    "jasmine-ajax":  "~2.0.1"
+  }
+}

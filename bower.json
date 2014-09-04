@@ -1,0 +1,21 @@
+{
+  "name": "breeze.dataservice.neo4j",
+  "version": "0.0.1",
+  "authors": [
+    "bogushmax <bogushmax@gmail.com>"
+  ],
+  "main": "src/breeze.dataservice.neo4j.js",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "lib/",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+	"breezejs":               "latest",
+	"q":                      "1.0.1",
+    "jquery":                 "latest"
+  }
+}
