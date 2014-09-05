@@ -62,16 +62,21 @@
         buildCypherQuery: function (mappingContext) {
             var entityType = getEntityType(mappingContext);
             var entityQuery = mappingContext.query;
-            var cypherQuery = 'CYPHER 2.0';
-            // Building
-            cypherQuery += newLine('MATCH (n:`' + entityType.shortName + '`)');
+            var cypherQuery = '';
+            // FIXME
+            if (entityQuery.wherePredicate) {
+                cypherQuery += newLine('START n = node(' + entityQuery.wherePredicate._value + ')');
+            } else {
+                // Building
+                cypherQuery += newLine('MATCH (n:`' + entityType.shortName + '`)');
+            }
             // Building navigation properties neo4j matchs
             entityType.navigationProperties.forEach(function (property, index) {
                 cypherQuery += newLine('OPTIONAL MATCH (n)-[`' + property.associationName + '`]-(n' + index + ':`' + property.entityType.shortName + '`)');
             });
             // Building neo4j to breeze.js data properties mapper
             cypherQuery += newLine('RETURN id(n) AS id,' + entityType.dataProperties
-                .filter(function (property) { return !property.isPartOfKey; })
+                .filter(function (property) { return !property.isPartOfKey && !property.relatedNavigationProperty; })
                 .map(function (property) {
                     return 'n.`' + property.nameOnServer + '` AS `' + property.name + '`';
                 }).join(','));
@@ -81,13 +86,15 @@
                     .map(function (property, index) {
                         var navigationEntityType = property.entityType;
                         var navigationProperties = navigationEntityType.dataProperties;
-                        return 'collect({ id: id(n' + index + '),' +
+                        return 'collect(CASE id(n' + index + ') WHEN null then null else { id: id(n' + index + '),' +
                             navigationProperties
-                                .filter(function (property) { return !property.isPartOfKey; })
+                                .filter(function (property) {
+                                    return !property.isPartOfKey && !property.relatedNavigationProperty;
+                                })
                                 .map(function (navigationProperty) {
                                     return '`' + navigationProperty.name + '`: n' + index + '.`' + navigationProperty.nameOnServer + '`';
                                 }).join(',')
-                        + '}) AS ' + property.nameOnServer;
+                        + '} END) AS ' + property.nameOnServer;
                     }).join(',');
             }
             return cypherQuery;
@@ -95,10 +102,10 @@
 
         executeQuery: function (mappingContext) {
             var adapter = this;
-            var deferred = Q.defer();
+            var deferred = breeze.Q.defer();
             var params = {
                 type: 'POST',
-                url: mappingContext.dataService.makeUrl('db/data/transaction/commit'),
+                url: mappingContext.dataService.makeUrl('transaction/commit'),
                 data: JSON.stringify({
                     statements: [
                         {
@@ -132,19 +139,30 @@
             var entityData = helper.unwrapInstance(entity);
             cypherQuery += newLine('CREATE (n:`' + entityType.shortName + '` {' +
                 Object.keys(entityData)
-                    .filter(function (propertyKey) { return !entityType.getDataProperty(propertyKey).isPartOfKey; })
+                    .filter(function (propertyKey) {
+                        var dataProperty = entityType.getDataProperty(propertyKey);
+                        return !dataProperty.isPartOfKey && 
+                               !dataProperty.relatedNavigationProperty &&
+                                entityData[propertyKey];
+                    })
                     .map(function (propertyKey) {
                         return '`' + propertyKey + '`:"' + entityData[propertyKey] + '"';
                     }).join(',')
             + '})');
             // Build unified response for write queries
             cypherQuery += newLine('RETURN [ { type: "' + entityType.name + '", id: id(n) } ] AS createdKeys, [{`tempValue`:' + entityData.id + ', `realValue`: id(n), `entityTypeName`: "' + entityType.name + '"}] AS keyMappings,' +
-                '[{ id: id(n), `$type`: "' + entityType.name + '",' + entityType.dataProperties
-                    .filter(function (property) { return !property.isPartOfKey; })
+                '[ { id: id(n), `$type`: "' + entityType.name + '",' + entityType.dataProperties
+                    .filter(function (property) {
+                        return !property.isPartOfKey;
+                    })
                     .map(function (property) {
-                        return '`' + property.name + '`: n.`' + property.nameOnServer + '`';
+                        if (property.relatedNavigationProperty) {
+                            return '`' + property.name + '`: ' + entityData[property.name];
+                        } else {
+                            return '`' + property.name + '`: n.`' + property.nameOnServer + '`';
+                        }
                     }).join(',') +
-            '}] AS createdEntities');
+            '} ] AS createdEntities');
             return cypherQuery;
         },
 
@@ -183,11 +201,13 @@
                 entityType.dataProperties.forEach(function (property) {
                     if (typeof property.relatedNavigationProperty !== 'undefined') {
                         var relatedKey = entity.getProperty(property.name);
-                        var relationType = property.relatedNavigationProperty.associationName;
-                        var cypherQuery = 'CYPHER 2.0';
-                        cypherQuery += newLine('START n = node(' + mapKey(key) + '), p = node(' + mapKey(relatedKey) + ')');
-                        cypherQuery += newLine('CREATE UNIQUE n-[:`' + relationType + '`]->p');
-                        cypherQueries.push(cypherQuery);
+                        if (relatedKey) {
+                            var relationType = property.relatedNavigationProperty.associationName;
+                            var cypherQuery = 'CYPHER 2.0';
+                            cypherQuery += newLine('START n = node(' + mapKey(key) + '), p = node(' + mapKey(relatedKey) + ')');
+                            cypherQuery += newLine('CREATE UNIQUE n-[:`' + relationType + '`]->p');
+                            cypherQueries.push(cypherQuery);
+                        }
                     }
                 });
             });
@@ -250,12 +270,12 @@
                 });
             };
             var adapter = saveContext.adapter = this;
-            var deferred = Q.defer();
+            var deferred = breeze.Q.defer();
             var baseParams = {
                 type: 'POST', contentType: 'application/json', dataType: 'json'
             };
             adapter.ajaxImpl.ajax(breeze.core.extend(baseParams, {
-                url: saveContext.dataService.makeUrl('db/data/transaction'),
+                url: saveContext.dataService.makeUrl('transaction'),
                 data: JSON.stringify({
                     statements: wrapStatements(adapter.createTransactionStatements(saveContext, saveBundle))
                 }),
@@ -273,8 +293,8 @@
                         success: function (httpResponse) {
                             saveResult.httpResponse = httpResponse;
                             adapter.ajaxImpl.ajax(breeze.core.extend(baseParams, {
-                                type: 'DELETE',
-                                url: transactionUrl,
+                                type: 'POST',
+                                url: commitUrl,
                                 success: function (httpResponse) {
                                     deferred.resolve(saveResult);
                                 }
@@ -298,7 +318,10 @@
                     var columns = results.columns;
                     var node = {};
                     columns.forEach(function (column, i) {
-                        node[column] = values.row[i];
+                        if (values.row[i] && values.row[i] instanceof Array && !values.row[i].length)
+                            node[column] = null;
+                        else
+                            node[column] = values.row[i];
                     });
                     return node;
                 });
