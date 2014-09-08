@@ -143,7 +143,7 @@
                         var dataProperty = entityType.getDataProperty(propertyKey);
                         return !dataProperty.isPartOfKey && 
                                !dataProperty.relatedNavigationProperty &&
-                                entityData[propertyKey];
+                                typeof entityData[propertyKey] !== 'undefined';
                     })
                     .map(function (propertyKey) {
                         return '`' + propertyKey + '`:"' + entityData[propertyKey] + '"';
@@ -187,7 +187,7 @@
                         var dataProperty = entityType.getDataProperty(propertyKey);
                         return !dataProperty.isPartOfKey &&
                                !dataProperty.relatedNavigationProperty &&
-                                entityData[propertyKey];
+                                typeof entityData[propertyKey] !== 'undefined';
                     })
                     .map(function (propertyKey) {
                         return 'n.`' + propertyKey + '` = "' + entityData[propertyKey] + '"';
