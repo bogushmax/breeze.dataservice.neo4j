@@ -62,7 +62,7 @@
         buildCypherQuery: function (mappingContext) {
             var entityType = getEntityType(mappingContext);
             var entityQuery = mappingContext.query;
-            var cypherQuery = '';
+            var cypherQuery = 'CYPHER 2.0';
             // FIXME
             if (entityQuery.wherePredicate) {
                 cypherQuery += newLine('START n = node(' + entityQuery.wherePredicate._value + ')');
@@ -168,7 +168,6 @@
 
         buildDeleteCypherQuery: function (saveContext, entity) {
             var cypherQuery = 'CYPHER 2.0';
-            var helper = saveContext.entityManager.helper;
             cypherQuery += newLine('START n = node(' + entity.getProperty('id') + ')');
             cypherQuery += newLine('OPTIONAL MATCH n-[r]-()');
             cypherQuery += newLine('DELETE r, n');
@@ -179,10 +178,21 @@
         buildModifyCypherQuery: function (saveContext, entity) {
             var cypherQuery = 'CYPHER 2.0';
             var helper = saveContext.entityManager.helper;
+            var entityType = entity.entityType;
+            var entityData = helper.unwrapChangedValues(entity, saveContext.entityManager.metadataStore);
             cypherQuery += newLine('START n = node(' + entity.getProperty('id') + ')');
-            cypherQuery += newLine('OPTIONAL MATCH n-[r]-()');
-            cypherQuery += newLine('DELETE r, n');
-            cypherQuery += newLine('RETURN [' + entity.getProperty('id') + '] AS deletedKeys');
+            cypherQuery += newLine('SET ');
+            cypherQuery += Object.keys(entityData)
+                    .filter(function (propertyKey) {
+                        var dataProperty = entityType.getDataProperty(propertyKey);
+                        return !dataProperty.isPartOfKey &&
+                               !dataProperty.relatedNavigationProperty &&
+                                entityData[propertyKey];
+                    })
+                    .map(function (propertyKey) {
+                        return 'n.`' + propertyKey + '` = "' + entityData[propertyKey] + '"';
+                    }).join(',');
+            cypherQuery += newLine('RETURN [ { type: "' + entity.entityType.name + '", id: ' + entity.getProperty('id') + ' } ] AS updatedKeys');
             return cypherQuery;
         },
 
@@ -217,12 +227,10 @@
         createTransactionStatements: function (saveContext, saveBundle) {
             var adapter = this;
             return saveBundle.entities.map(function (entity) {
-                //var entityData = helper.unwrapChangedValues(entity, saveContext.entityManager.metadataStore);
-                //var entityData = helper.unwrapInstance(entity);
                 if (entity.entityAspect.entityState.isAdded()) {
                     return adapter.buildCreateCypherQuery(saveContext, entity);
                 } else if (entity.entityAspect.entityState.isModified()) {
-                    // ...
+                    return adapter.buildModifyCypherQuery(saveContext, entity);
                 } else if (entity.entityAspect.entityState.isDeleted()) {
                     return adapter.buildDeleteCypherQuery(saveContext, entity);
                 }
@@ -265,7 +273,7 @@
 
         saveChanges: function (saveContext, saveBundle) {
             var wrapStatements = function (statements) {
-                return statements.map(function (statement) {
+                return statements.filter(function (statement) { return statement; }).map(function (statement) {
                     return { statement: statement, resultDataContents: ['row'] };
                 });
             };
