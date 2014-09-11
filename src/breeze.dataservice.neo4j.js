@@ -86,15 +86,27 @@
                     .map(function (property, index) {
                         var navigationEntityType = property.entityType;
                         var navigationProperties = navigationEntityType.dataProperties;
-                        return 'collect(CASE id(n' + index + ') WHEN null then null else { id: id(n' + index + '),' +
-                            navigationProperties
-                                .filter(function (property) {
-                                    return !property.isPartOfKey && !property.relatedNavigationProperty;
-                                })
-                                .map(function (navigationProperty) {
-                                    return '`' + navigationProperty.name + '`: n' + index + '.`' + navigationProperty.nameOnServer + '`';
-                                }).join(',')
-                        + '} END) AS ' + property.nameOnServer;
+                        if (property.isScalar) {
+                            return '{ id: id(n' + index + '),' +
+                                navigationProperties
+                                    .filter(function (property) {
+                                        return !property.isPartOfKey && !property.relatedNavigationProperty;
+                                    })
+                                    .map(function (navigationProperty) {
+                                        return '`' + navigationProperty.name + '`: n' + index + '.`' + navigationProperty.nameOnServer + '`';
+                                    }).join(',')
+                            + '} AS ' + property.nameOnServer;
+                        } else {
+                            return 'collect(CASE id(n' + index + ') WHEN null then null else { id: id(n' + index + '),' +
+                                navigationProperties
+                                    .filter(function (property) {
+                                        return !property.isPartOfKey && !property.relatedNavigationProperty;
+                                    })
+                                    .map(function (navigationProperty) {
+                                        return '`' + navigationProperty.name + '`: n' + index + '.`' + navigationProperty.nameOnServer + '`';
+                                    }).join(',')
+                            + '} END) AS ' + property.nameOnServer;
+                        }
                     }).join(',');
             }
             return cypherQuery;
