@@ -72,14 +72,14 @@
             }
             // Building navigation properties neo4j matchs
             entityType.navigationProperties.forEach(function (property, index) {
-                cypherQuery += newLine('OPTIONAL MATCH (n)-[`' + property.associationName + '`]-(n' + index + ':`' + property.entityType.shortName + '`)');
+                cypherQuery += newLine('OPTIONAL MATCH (n)-[r' + index + ':`' + property.associationName + '`]-(n' + index + ':`' + property.entityType.shortName + '`)');
             });
             // Building neo4j to breeze.js data properties mapper
-            cypherQuery += newLine('RETURN id(n) AS id,' + entityType.dataProperties
+            cypherQuery += newLine(('RETURN DISTINCT id(n) AS id,' + entityType.dataProperties
                 .filter(function (property) { return !property.isPartOfKey && !property.relatedNavigationProperty; })
                 .map(function (property) {
-                    return 'n.`' + property.nameOnServer + '` AS `' + property.name + '`';
-                }).join(','));
+                    return 'n.`' + property.nameOnServer + '` AS `' + property.name + '`,';
+                }).join('')).slice(0, -1));
             if (entityType.navigationProperties.length) {
                 cypherQuery += ',';
                 return cypherQuery += entityType.navigationProperties
@@ -87,24 +87,24 @@
                         var navigationEntityType = property.entityType;
                         var navigationProperties = navigationEntityType.dataProperties;
                         if (property.isScalar) {
-                            return '{ id: id(n' + index + '),' +
+                            return ('{ id: id(n' + index + '),' +
                                 navigationProperties
                                     .filter(function (property) {
                                         return !property.isPartOfKey && !property.relatedNavigationProperty;
                                     })
                                     .map(function (navigationProperty) {
-                                        return '`' + navigationProperty.name + '`: n' + index + '.`' + navigationProperty.nameOnServer + '`';
-                                    }).join(',')
+                                        return '`' + navigationProperty.name + '`: n' + index + '.`' + navigationProperty.nameOnServer + '`,';
+                                    }).join('')).slice(0, -1)
                             + '} AS ' + property.nameOnServer;
                         } else {
-                            return 'collect(CASE id(n' + index + ') WHEN null then null else { id: id(n' + index + '),' +
+                            return 'collect(DISTINCT CASE id(n' + index + ') WHEN null then null else ' + (' { id: id(n' + index + '),' +
                                 navigationProperties
                                     .filter(function (property) {
                                         return !property.isPartOfKey && !property.relatedNavigationProperty;
                                     })
                                     .map(function (navigationProperty) {
-                                        return '`' + navigationProperty.name + '`: n' + index + '.`' + navigationProperty.nameOnServer + '`';
-                                    }).join(',')
+                                        return '`' + navigationProperty.name + '`: n' + index + '.`' + navigationProperty.nameOnServer + '`,';
+                                    }).join('')).slice(0,-1)
                             + '} END) AS ' + property.nameOnServer;
                         }
                     }).join(',');
@@ -338,9 +338,11 @@
                     var columns = results.columns;
                     var node = {};
                     columns.forEach(function (column, i) {
+                        /*
                         if (values.row[i] && values.row[i] instanceof Array && !values.row[i].length)
                             node[column] = null;
                         else
+                        */
                             node[column] = values.row[i];
                     });
                     return node;
