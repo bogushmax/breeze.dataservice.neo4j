@@ -217,7 +217,9 @@
                 }
                 return key;
             };
-            saveBundle.entities.forEach(function (entity) {
+            saveBundle.entities.filter(function (entity) {
+                return !entity.entityAspect.entityState.isDeleted();
+            }).forEach(function (entity) {
                 var key = entity.getProperty('id');
                 var entityType = entity.entityType;
                 entityType.dataProperties.forEach(function (property) {
@@ -270,7 +272,7 @@
                     });
                 });
             });
-            keys = mergedData.createdKeys.concat(mergedData.deletedKeys, mergedData.updatedKeys);
+            keys = mergedData.createdKeys.concat(/*mergedData.deletedKeys,*/ mergedData.updatedKeys);
             keys.forEach(function (key) {
                 var entity = em.getEntityByKey(key.type, key.id);
                 if (entity) {
@@ -294,7 +296,8 @@
             var baseParams = {
                 type: 'POST', contentType: 'application/json', dataType: 'json'
             };
-            adapter.ajaxImpl.ajax(breeze.core.extend(baseParams, {
+            var transactionParams = breeze.core.extend({}, baseParams);
+            breeze.core.extend(transactionParams, {
                 url: saveContext.dataService.makeUrl('transaction'),
                 data: JSON.stringify({
                     statements: wrapStatements(adapter.createTransactionStatements(saveContext, saveBundle))
@@ -305,28 +308,33 @@
                     var data = cypherResultsExtract(httpResponse.data);
                     var saveResult = adapter.prepareSaveResult(saveContext, data, httpResponse);
                     // Execute relationships creating query in current transaction
-                    adapter.ajaxImpl.ajax(breeze.core.extend(baseParams, {
+                    var transactionParams = breeze.core.extend({}, baseParams);
+                    breeze.core.extend(transactionParams, {
                         url: transactionUrl,
                         data: JSON.stringify({
                             statements: wrapStatements(adapter.buildCreateRelationshipsCypherQueries(saveContext, saveBundle, saveResult))
                         }),
                         success: function (httpResponse) {
+                            var transactionParams = breeze.core.extend({}, baseParams);
                             saveResult.httpResponse = httpResponse;
-                            adapter.ajaxImpl.ajax(breeze.core.extend(baseParams, {
+                            breeze.core.extend(transactionParams, {
                                 type: 'POST',
                                 url: commitUrl,
                                 success: function (httpResponse) {
                                     deferred.resolve(saveResult);
                                 }
-                            }));
+                            });
+                            adapter.ajaxImpl.ajax(transactionParams);
                         },
                         error: function (httpResponse) { }
-                    }));
+                    });
+                    adapter.ajaxImpl.ajax(transactionParams);
                 },
                 error: function (httpResponse) {
                     throw new Error('HTTP error');
                 }
-            }));
+            });
+            adapter.ajaxImpl.ajax(transactionParams);
             return deferred.promise;
         },
 
@@ -338,12 +346,7 @@
                     var columns = results.columns;
                     var node = {};
                     columns.forEach(function (column, i) {
-                        /*
-                        if (values.row[i] && values.row[i] instanceof Array && !values.row[i].length)
-                            node[column] = null;
-                        else
-                        */
-                            node[column] = values.row[i];
+                        node[column] = values.row[i];
                     });
                     return node;
                 });
